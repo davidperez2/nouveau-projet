@@ -35,7 +35,7 @@ parser.add_argument('--eval_data', type=str, default='test',
 parser.add_argument('--checkpoint_dir', type=str, default='/tmp/cifar10_train',
                     help='Directory where to read model checkpoints.')
 
-parser.add_argument('--eval_interval_secs', type=int, default=10,
+parser.add_argument('--eval_interval_secs', type=int, default=60*2,
                     help='How often to run the eval.')
 
 parser.add_argument('--num_examples', type=int, default=100000,
@@ -44,6 +44,14 @@ parser.add_argument('--num_examples', type=int, default=100000,
 parser.add_argument('--run_once', type=bool, default=False,
                     help='Whether to run eval only once.')
 
+parser.add_argument('--use_Suquan', type=bool, default=True,
+                    help='Train the model using the first layer with suquan.')
+
+parser.add_argument('--norm_Suquan', type=float, default=10,
+                    help='to multiply the inital value of f')
+
+parser.add_argument('--reglog', type=bool, default=True,
+                    help='if True then it is a logistic regression else neural network')
 
 
 def eval_once(saver, summary_writer, top_k_op, summary_op):
@@ -110,7 +118,7 @@ def evaluate():
 
     # Build a Graph that computes the logits predictions from the
     # inference model.
-    logits = cifar10.inferencebis(images)
+    logits=cifar10.inference(images,FLAGS.reglog,FLAGS.use_Suquan,FLAGS.norm_Suquan)
 
     # Calculate predictions.
     top_k_op = tf.nn.in_top_k(logits, labels, 1)
