@@ -1,4 +1,5 @@
 """
+
 # Compute input images and labels for training. If you would like to run
  # evaluations, use inputs() instead.
  inputs, labels = distorted_inputs()
@@ -26,9 +27,9 @@ import tensorflow as tf
 import cifar10_input
 
 parser = argparse.ArgumentParser()
-BATCH_SIZE = 128
+
 # Basic model parameters.
-parser.add_argument('--batch_size', type=int, default=BATCH_SIZE,
+parser.add_argument('--batch_size', type=int, default=128,
                     help='Number of images to process in a batch.')
 
 parser.add_argument('--data_dir', type=str, default='/tmp/cifar10_data',
@@ -243,14 +244,15 @@ def suquan(images,shape,f):
 def suquanlayer(T,f):
     R, G, B = tf.unstack(T, None, 3)
     images = tf.reshape(tf.nn.top_k(
-        tf.reshape(tf.add(tf.multiply(0.2126, R), tf.add(tf.multiply(0.7152, G), tf.multiply(0.0722, B))), [BATCH_SIZE, -1]),
-        576).indices, [BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, 1])
+        tf.reshape(tf.add(tf.multiply(0.2126, R), tf.add(tf.multiply(0.7152, G), tf.multiply(0.0722, B))), [FLAGS.batch_size, -1]),
+        576).indices, [FLAGS.batch_size, IMAGE_SIZE, IMAGE_SIZE, 1])
     return tf.reshape(tf.stack(
         [tf.reshape(tf.gather(f, tf.reshape(x, [-1], None), name=None), [IMAGE_SIZE, IMAGE_SIZE], None) for x in tf.unstack(images)]),
-               [BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, 1])
+               [FLAGS.batch_size, IMAGE_SIZE, IMAGE_SIZE, 1])
 
 
-def inferencebis(images):
+
+def inferencebis(images,use_Suquan,norm_Suquan):
   """Build the CIFAR-10 model.
   Args:
     images: Images returned from distorted_inputs() or inputs().
@@ -258,51 +260,14 @@ def inferencebis(images):
     Logits.
   """
 
-  R, G, B = tf.unstack(images, None, 3)
-#  imagesgris=tf.reshape(tf.add(tf.multiply(0.2126, R), tf.add(tf.multiply(0.7152, G), tf.multiply(0.0722, B))),[BATCH_SIZE,IMAGE_SIZE,IMAGE_SIZE,1])
-  #gris
-#  f=_variable_on_cpu('f', [576], initializer=tf.truncated_normal_initializer(0.0,5.0))
-  f=tf.Variable(initial_value=tf.range(-10,10,20/576,dtype=tf.float32),trainable=True)
-#  y=tf.multiply(tf.nn.l2_loss(f), 576*576, name='weight_loss')
-#  tf.add_to_collection('losses', 1/y)
-  suquan=suquanlayer(images,f)
-#  f=tf.constant(tf.range(0,1,1/576,dtype=tf.float32))
-#  f.eval(session=sess)
-#  suquan= tf.reshape(tf.stack([tf.reshape(tf.gather(f, tf.reshape(x, [-1],None),name=None),[24,24],None) for x in tf.unstack(images)]),[128,IMAGE_SIZE,IMAGE_SIZE,1])
-
-  """
-  #couleur
-  R,G,B=tf.unstack(images,None,3)
-#  fR=tf.Variable(initial_value=tf.zeros(576,tf.float32),trainable=True)
-#  fG=tf.Variable(initial_value=tf.zeros(576,tf.float32),trainable=True)
-#  fB=tf.Variable(initial_value=tf.zeros(576,tf.float32),trainable=True)
-  fR=tf.truncated_normal([576],0.0,0.5,dtype=tf.float32)
-  fG=tf.truncated_normal([576],0.0,0.5,dtype=tf.float32)
-  fB=tf.truncated_normal([576],0.0,0.5,dtype=tf.float32)
-  suquan= tf.stack([tf.stack([tf.reshape(tf.gather(fR, tf.reshape(x, [-1])),[24,24]) for x in tf.unstack(R)]),tf.stack([tf.reshape(tf.gather(fG, tf.reshape(x, [-1])),[24,24]) for x in tf.unstack(G)]),tf.stack([tf.reshape(tf.gather(fB, tf.reshape(x, [-1])),[24,24]) for x in tf.unstack(B)])],3)
-  """
-  #  suquan= tf.stack([tf.gather(f, tf.reshape(x, [-1],None),name=None) for x in tf.unstack(images)])
-  """
-  with tf.variable_scope('conv1') as scope:
-    kernel = _variable_with_weight_decay('weights',
-                                         shape=[5, 5, 1, 64],
-                                         stddev=5e-2,
-                                         wd=0.0)
-    #    conv = tf.nn.conv2d(images, kernel, [1, 1, 1, 1], padding='SAME')
-    conv = tf.nn.conv2d(suquan, kernel, [1, 1, 1, 1], padding='SAME')
-    biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.0))
-    pre_activation = tf.nn.bias_add(conv, biases)
-    conv1 = tf.nn.relu(pre_activation, name=scope.name)
-    _activation_summary(conv1)
-
-  # pool1
-  pool1 = tf.nn.max_pool(conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1],
-                         padding='SAME', name='pool1')
-  # norm1
-  norm1 = tf.nn.lrn(pool1, 4, bias=0.01, alpha=0.001 / 9.0, beta=0.75,
-                    name='norm1')
-  """
-
+  if use_Suquan :
+    f = tf.Variable(initial_value=tf.range(-norm_Suquan/2, norm_Suquan/2, norm_Suquan / 576, dtype=tf.float32), trainable=True)
+        #  y=tf.multiply(tf.nn.l2_loss(f), 576*576, name='weight_loss')
+        #  tf.add_to_collection('losses', 1/y)
+    imagesgris = suquanlayer(images, f)
+  else:
+    R, G, B = tf.unstack(images, None, 3)
+    imagesgris=tf.reshape(tf.add(tf.multiply(0.2126, R), tf.add(tf.multiply(0.7152, G), tf.multiply(0.0722, B))),[FLAGS.batch_size,IMAGE_SIZE,IMAGE_SIZE,1])
 
 
   with tf.variable_scope('softmax_linear') as scope:
@@ -310,7 +275,7 @@ def inferencebis(images):
                                           stddev=1/576.0, wd=0)
     biases = _variable_on_cpu('biases', [NUM_CLASSES],
                               tf.constant_initializer(0.0))
-    softmax_linear = tf.add(tf.matmul(tf.reshape(suquan,[128,-1]), weights), biases, name=scope.name)
+    softmax_linear = tf.add(tf.matmul(tf.reshape(imagesgris,[128,-1]), weights), biases, name=scope.name)
     _activation_summary(softmax_linear)
 
 #  tf.add_to_collection('losses', tf.multiply(tf.nn.l2_loss(softmax_linear), -0.01, name='weight_loss'))
@@ -319,10 +284,7 @@ def inferencebis(images):
 
 
 
-
-
-
-def inference(images):
+def inference(images,reglog,use_Suquan,norm_Suquan):
   """Build the CIFAR-10 model.
   Args:
     images: Images returned from distorted_inputs() or inputs().
@@ -334,92 +296,89 @@ def inference(images):
   # If we only ran this model on a single GPU, we could simplify this function
   # by replacing all instances of tf.get_variable() with tf.Variable().
 
-#  print(images)
-  """   R,G,B=tf.unstack(images,None,3)
-  fR=tf.Variable(initial_value=tf.zeros(576,tf.float32),trainable=True)
-  fG=tf.Variable(initial_value=tf.zeros(576,tf.float32),trainable=True)
-  fB=tf.Variable(initial_value=tf.zeros(576,tf.float32),trainable=True)
-  suquan= tf.stack([tf.stack([tf.reshape(tf.gather(fR, tf.reshape(x, [-1])),[24,24]) for x in tf.unstack(R)]),tf.stack([tf.reshape(tf.gather(fG, tf.reshape(x, [-1])),[24,24]) for x in tf.unstack(G)]),tf.stack([tf.reshape(tf.gather(fB, tf.reshape(x, [-1])),[24,24]) for x in tf.unstack(B)])],3)
-  """
-  # gris
+  if reglog :
+      return inferencebis(images,use_Suquan,norm_Suquan)
+  else:
+    if use_Suquan:
+        f = tf.Variable(
+              initial_value=tf.range(-norm_Suquan / 2, norm_Suquan / 2, norm_Suquan / 576, dtype=tf.float32),
+              trainable=True)
+        imagesgris = suquanlayer(images, f)
+    else:
+        R, G, B = tf.unstack(images, None, 3)
+        imagesgris = tf.reshape(
+              tf.add(tf.multiply(0.2126, R), tf.add(tf.multiply(0.7152, G), tf.multiply(0.0722, B))),
+              [FLAGS.batch_size, IMAGE_SIZE, IMAGE_SIZE, 1])
 
-  f=tf.Variable(initial_value=tf.range(-10,10,20/576,dtype=tf.float32),trainable=True,name='f')
-  suquan=suquanlayer(images,f)
-#  suquan = tf.reshape(tf.stack([tf.reshape(tf.gather(f, tf.reshape(x, [-1], None), name=None), [IMAGE_SIZE, IMAGE_SIZE], None) for x in tf.unstack(images)]), [BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, 1])
-#  f=tf.Variable(initial_value=tf.zeros(576,tf.float32),trainable=True)
-#  suquan= tf.stack([tf.reshape(tf.gather(f, tf.reshape(x, [-1],None),name=None),[24,24],None) for x in tf.unstack(images)])
-#  print(f[0].eval(session=sess))
-
-  with tf.variable_scope('conv1') as scope:
-    kernel = _variable_with_weight_decay('weights',
+    with tf.variable_scope('conv1') as scope:
+        kernel = _variable_with_weight_decay('weights',
                                          shape=[5, 5, 1, 64],
                                          stddev=5e-2,
                                          wd=0.0)
-#    conv = tf.nn.conv2d(images, kernel, [1, 1, 1, 1], padding='SAME')
-    conv = tf.nn.conv2d(suquan, kernel, [1, 1, 1, 1], padding='SAME')
-    biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.0))
-    pre_activation = tf.nn.bias_add(conv, biases)
-    conv1 = tf.nn.relu(pre_activation, name=scope.name)
-    _activation_summary(conv1)
+        conv = tf.nn.conv2d(imagesgris, kernel, [1, 1, 1, 1], padding='SAME')
+        biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.0))
+        pre_activation = tf.nn.bias_add(conv, biases)
+        conv1 = tf.nn.relu(pre_activation, name=scope.name)
+        _activation_summary(conv1)
 
-  # pool1
-  pool1 = tf.nn.max_pool(conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1],
+    # pool1
+    pool1 = tf.nn.max_pool(conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1],
                          padding='SAME', name='pool1')
-  # norm1
-  norm1 = tf.nn.lrn(pool1, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
+    # norm1
+    norm1 = tf.nn.lrn(pool1, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
                     name='norm1')
 
-  # conv2
-  with tf.variable_scope('conv2') as scope:
-    kernel = _variable_with_weight_decay('weights',
+    # conv2
+    with tf.variable_scope('conv2') as scope:
+        kernel = _variable_with_weight_decay('weights',
                                          shape=[5, 5, 64, 64],
                                          stddev=5e-2,
                                          wd=0.0)
-    conv = tf.nn.conv2d(norm1, kernel, [1, 1, 1, 1], padding='SAME')
-    biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
-    pre_activation = tf.nn.bias_add(conv, biases)
-    conv2 = tf.nn.relu(pre_activation, name=scope.name)
-    _activation_summary(conv2)
+        conv = tf.nn.conv2d(norm1, kernel, [1, 1, 1, 1], padding='SAME')
+        biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
+        pre_activation = tf.nn.bias_add(conv, biases)
+        conv2 = tf.nn.relu(pre_activation, name=scope.name)
+        _activation_summary(conv2)
 
-  # norm2
-  norm2 = tf.nn.lrn(conv2, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
+    # norm2
+    norm2 = tf.nn.lrn(conv2, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
                     name='norm2')
-  # pool2
-  pool2 = tf.nn.max_pool(norm2, ksize=[1, 3, 3, 1],
+    # pool2
+    pool2 = tf.nn.max_pool(norm2, ksize=[1, 3, 3, 1],
                          strides=[1, 2, 2, 1], padding='SAME', name='pool2')
 
-  # local3
-  with tf.variable_scope('local3') as scope:
-    # Move everything into depth so we can perform a single matrix multiply.
-    reshape = tf.reshape(pool2, [FLAGS.batch_size, -1])
-    dim = reshape.get_shape()[1].value
-    weights = _variable_with_weight_decay('weights', shape=[dim, 384],
+    # local3
+    with tf.variable_scope('local3') as scope:
+        # Move everything into depth so we can perform a single matrix multiply.
+        reshape = tf.reshape(pool2, [FLAGS.batch_size, -1])
+        dim = reshape.get_shape()[1].value
+        weights = _variable_with_weight_decay('weights', shape=[dim, 384],
                                           stddev=0.04, wd=0.004)
-    biases = _variable_on_cpu('biases', [384], tf.constant_initializer(0.1))
-    local3 = tf.nn.relu(tf.matmul(reshape, weights) + biases, name=scope.name)
-    _activation_summary(local3)
+        biases = _variable_on_cpu('biases', [384], tf.constant_initializer(0.1))
+        local3 = tf.nn.relu(tf.matmul(reshape, weights) + biases, name=scope.name)
+        _activation_summary(local3)
 
-  # local4
-  with tf.variable_scope('local4') as scope:
-    weights = _variable_with_weight_decay('weights', shape=[384, 192],
+    # local4
+    with tf.variable_scope('local4') as scope:
+        weights = _variable_with_weight_decay('weights', shape=[384, 192],
                                           stddev=0.04, wd=0.004)
-    biases = _variable_on_cpu('biases', [192], tf.constant_initializer(0.1))
-    local4 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
-    _activation_summary(local4)
+        biases = _variable_on_cpu('biases', [192], tf.constant_initializer(0.1))
+        local4 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
+        _activation_summary(local4)
 
-  # linear layer(WX + b),
-  # We don't apply softmax here because
-  # tf.nn.sparse_softmax_cross_entropy_with_logits accepts the unscaled logits
-  # and performs the softmax internally for efficiency.
-  with tf.variable_scope('softmax_linear') as scope:
-    weights = _variable_with_weight_decay('weights', [192, NUM_CLASSES],
+    # linear layer(WX + b),
+    # We don't apply softmax here because
+    # tf.nn.sparse_softmax_cross_entropy_with_logits accepts the unscaled logits
+    # and performs the softmax internally for efficiency.
+    with tf.variable_scope('softmax_linear') as scope:
+        weights = _variable_with_weight_decay('weights', [192, NUM_CLASSES],
                                           stddev=1/192.0, wd=0.0)
-    biases = _variable_on_cpu('biases', [NUM_CLASSES],
+        biases = _variable_on_cpu('biases', [NUM_CLASSES],
                               tf.constant_initializer(0.0))
-    softmax_linear = tf.add(tf.matmul(local4, weights), biases, name=scope.name)
-    _activation_summary(softmax_linear)
+        softmax_linear = tf.add(tf.matmul(local4, weights), biases, name=scope.name)
+        _activation_summary(softmax_linear)
 
-  return softmax_linear
+    return softmax_linear
 
 
 def loss(logits, labels):
@@ -510,7 +469,6 @@ def train(total_loss, global_step):
   # Add histograms for trainable variables.
   for var in tf.trainable_variables():
     tf.summary.histogram(var.op.name, var)
-    print(var)
 
   # Add histograms for gradients.
   for grad, var in grads:
