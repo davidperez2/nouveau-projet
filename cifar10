@@ -161,12 +161,7 @@ def distorted_inputs():
     raise ValueError('Please supply a data_dir')
   data_dir = os.path.join(FLAGS.data_dir, 'cifar-10-batches-bin')
   images, labels = cifar10_input.distorted_inputs(data_dir=data_dir,                                              batch_size=FLAGS.batch_size)
-  """
-  imagesbis = []
-  for x in tf.unstack(images, None, 0):
-    imagesbis = imagesbis + [tf.stack(tf.constant([reshape_list(permutation_tensor(tf.reshape(y, [-1]))) for y in tf.unstack(x, None, 2)]))]
-  images = tf.stack(imagesbis)
-  """
+
   if FLAGS.use_fp16:
     images = tf.cast(images, tf.float16)
     labels = tf.cast(labels, tf.float16)
@@ -176,13 +171,6 @@ def distorted_inputs():
     tf.reshape(tf.add(tf.multiply(0.2126, R), tf.add(tf.multiply(0.7152, G), tf.multiply(0.0722, B))), [128, -1]),576).indices, [128, 24, 24, 1])
   """
 
-
-  """
-  R = tf.reshape(tf.nn.top_k(tf.reshape(R, [128, -1]),576).indices,[128,24,24])
-  G = tf.reshape(tf.nn.top_k(tf.reshape(G, [128, -1]),576).indices,[128,24,24])
-  B = tf.reshape(tf.nn.top_k(tf.reshape(B, [128, -1]),576).indices,[128,24,24])
-  images = tf.stack([R,G,B],3)
-  """
   return images, labels
 
 
@@ -215,32 +203,6 @@ def inputs(eval_data):
   return images, labels
 
 
-"""
-#gris
-def suquanlayer(T,f):
-  #  images=tf.nn.top_k(tf.reshape(T, [-1, IMAGE_SIZE*IMAGE_SIZE]),IMAGE_SIZE*IMAGE_SIZE).indices
-  #  return tf.stack([tf.reshape(tf.gather(f, x,name=None),[IMAGE_SIZE,IMAGE_SIZE,1],None) for x in tf.unstack(images)])
-  return tf.stack([tf.reshape(tf.gather(f, x,name=None),[IMAGE_SIZE,IMAGE_SIZE,1],None) for x in tf.unstack(tf.nn.top_k(tf.reshape(T, [-1, IMAGE_SIZE*IMAGE_SIZE]),IMAGE_SIZE*IMAGE_SIZE).indices)])
-
-def SuquanNormalisation(T,shape,f):
-
-#  f=tf.Variable(tf.zeros(shape,tf.float32),trainable=True)
-  images = tf.nn.top_k(tf.reshape(T, [shape[0], shape[1] * shape[2]]), shape[1] * shape[2]).indices
-  return tf.stack(
-    [tf.reshape(tf.gather(f, x, name=None), [shape[1], shape[2], 1], None) for x in tf.unstack(images)])
-
-# f est un tenseur [shape[1]*shape[2],shape[3]]
-
-def suquan(images,shape,f):
-    F=[tf.unstack(f,None,1)]
-    x=[tf.nn.top_k(tf.reshape(a,[shape[0],-1]),shape[1]*shape[2]).indices for a in tf.unstack(images,None,3)]
-    y=[]
-    for i in range(shape[3]):
-        y=y+[tf.stack([tf.reshape(tf.gather(b,F[i]),[shape[1],shape[2]]) for b in tf.unstack(x[i])])]
-    return tf.stack(y,3)
-
-"""
-
 def suquanlayer(T,f):
     R, G, B = tf.unstack(T, None, 3)
     images = tf.reshape(tf.nn.top_k(
@@ -252,7 +214,7 @@ def suquanlayer(T,f):
 
 
 
-def inferencebis(images,use_Suquan,norm_Suquan):
+def inferencebis(images,use_Suquan,norm_Suquan,wdf,wdW):
   """Build the CIFAR-10 model.
   Args:
     images: Images returned from distorted_inputs() or inputs().
@@ -262,8 +224,7 @@ def inferencebis(images,use_Suquan,norm_Suquan):
 
   if use_Suquan :
     f = tf.Variable(initial_value=tf.range(-norm_Suquan/2, norm_Suquan/2, norm_Suquan / 576, dtype=tf.float32), trainable=True)
-        #  y=tf.multiply(tf.nn.l2_loss(f), 576*576, name='weight_loss')
-        #  tf.add_to_collection('losses', 1/y)
+    tf.add_to_collection('losses',tf.multiply(tf.nn.l2_loss(f), wdf, name='weight_loss'))
     imagesgris = suquanlayer(images, f)
   else:
     R, G, B = tf.unstack(images, None, 3)
@@ -277,14 +238,14 @@ def inferencebis(images,use_Suquan,norm_Suquan):
                               tf.constant_initializer(0.0))
     softmax_linear = tf.add(tf.matmul(tf.reshape(imagesgris,[128,-1]), weights), biases, name=scope.name)
     _activation_summary(softmax_linear)
-
+    tf.add_to_collection('losses',tf.multiply(tf.nn.l2_loss(weights), wdW, name='weight_loss'))
 #  tf.add_to_collection('losses', tf.multiply(tf.nn.l2_loss(softmax_linear), -0.01, name='weight_loss'))
   return softmax_linear
 
 
 
 
-def inference(images,reglog,use_Suquan,norm_Suquan):
+def inference(images,reglog,use_Suquan,norm_Suquan,wdf,wdW):
   """Build the CIFAR-10 model.
   Args:
     images: Images returned from distorted_inputs() or inputs().
@@ -297,12 +258,13 @@ def inference(images,reglog,use_Suquan,norm_Suquan):
   # by replacing all instances of tf.get_variable() with tf.Variable().
 
   if reglog :
-      return inferencebis(images,use_Suquan,norm_Suquan)
+      return inferencebis(images,use_Suquan,norm_Suquan,wdf,wdW)
   else:
     if use_Suquan:
         f = tf.Variable(
               initial_value=tf.range(-norm_Suquan / 2, norm_Suquan / 2, norm_Suquan / 576, dtype=tf.float32),
               trainable=True)
+        tf.add_to_collection('losses',tf.multiply(tf.nn.l2_loss(f), wdf, name='weight_loss'))
         imagesgris = suquanlayer(images, f)
     else:
         R, G, B = tf.unstack(images, None, 3)
@@ -377,7 +339,7 @@ def inference(images,reglog,use_Suquan,norm_Suquan):
                               tf.constant_initializer(0.0))
         softmax_linear = tf.add(tf.matmul(local4, weights), biases, name=scope.name)
         _activation_summary(softmax_linear)
-
+        tf.add_to_collection('losses',tf.multiply(tf.nn.l2_loss(weights), wdW, name='weight_loss'))
     return softmax_linear
 
 
