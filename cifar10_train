@@ -46,10 +46,10 @@ parser.add_argument('--reglog', type=bool, default=True,
                     help='if True then it is a logistic regression else neural network')
 
 parser.add_argument('--wdf', type=float, default=0/576,
-                    help='add L2L weight decay multiplied by wdf')
+                    help='add L2L weight decay for "f" multiplied by wdf')
 
 parser.add_argument('--wdW', type=float, default=0/5760,
-                    help='add L2L weight decay multiplied by wdW')
+                    help='add L2L weight decay for "W" multiplied by wdW')
 
 
 def train():
