@@ -35,7 +35,7 @@ parser.add_argument('--eval_data', type=str, default='test',
 parser.add_argument('--checkpoint_dir', type=str, default='/tmp/cifar10_train',
                     help='Directory where to read model checkpoints.')
 
-parser.add_argument('--eval_interval_secs', type=int, default=60*2,
+parser.add_argument('--eval_interval_secs', type=int, default=30,
                     help='How often to run the eval.')
 
 parser.add_argument('--num_examples', type=int, default=100000,
@@ -52,6 +52,12 @@ parser.add_argument('--norm_Suquan', type=float, default=10,
 
 parser.add_argument('--reglog', type=bool, default=True,
                     help='if True then it is a logistic regression else neural network')
+
+parser.add_argument('--wdf', type=float, default=1/576,
+                    help='add L2L weight decay multiplied by wdf')
+
+parser.add_argument('--wdW', type=float, default=1/5760,
+                    help='add L2L weight decay multiplied by wdW')
 
 
 def eval_once(saver, summary_writer, top_k_op, summary_op):
@@ -118,7 +124,7 @@ def evaluate():
 
     # Build a Graph that computes the logits predictions from the
     # inference model.
-    logits=cifar10.inference(images,FLAGS.reglog,FLAGS.use_Suquan,FLAGS.norm_Suquan)
+    logits=cifar10.inference(images,FLAGS.reglog,FLAGS.use_Suquan,FLAGS.norm_Suquan,FLAGS.wdf,FLAGS.wdW)
 
     # Calculate predictions.
     top_k_op = tf.nn.in_top_k(logits, labels, 1)
