@@ -38,6 +38,25 @@ parser.add_argument('--data_dir', type=str, default='/tmp/cifar10_data',
 parser.add_argument('--use_fp16', type=bool, default=False,
                     help='Train the model using fp16.')
 
+parser.add_argument('--use_Suquan', type=bool, default=True,
+                    help='Train the model using the first layer with suquan.')
+
+parser.add_argument('--norm_Suquan', type=float, default=10,
+                    help='to multiply the inital value of f')
+
+parser.add_argument('--use_linearmodel', type=bool, default=True,
+                    help='if True then it is a logistic regression else neural network')
+
+parser.add_argument('--wdf', type=float, default=5/576,
+                    help='add L2L weight decay for "f" multiplied by wdf')
+
+parser.add_argument('--wdW', type=float, default=5/5760,
+                    help='add L2L weight decay for "W" multiplied by wdW')
+
+parser.add_argument('--Classe', type=list, default=[8,9],
+                    help='Classe used during the training')
+
+
 FLAGS = parser.parse_args()
 
 # Global constants describing the CIFAR-10 data set.
@@ -97,32 +116,6 @@ def _variable_on_cpu(name, shape, initializer):
     var = tf.get_variable(name, shape, initializer=initializer, dtype=dtype)
   return var
 
-
-#def _variable_suquan(name, shape, stddev, wd):
-  """Helper to create an initialized Variable with weight decay.
-  Note that the Variable is initialized with a truncated normal distribution.
-  A weight decay is added only if one is specified.
-  Args:
-    name: name of the variable
-    shape: list of ints
-    stddev: standard deviation of a truncated Gaussian
-    wd: add L2Loss weight decay multiplied by this float. If None, weight
-        decay is not added for this Variable.
-  Returns:
-    Variable Tensor
-
-
-  dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
-  var = _variable_on_cpu(
-      name,
-      shape,
-      tf.truncated_normal_initializer(stddev=stddev, dtype=dtype))
-  if wd is not None:
-    weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
-    tf.add_to_collection('losses', weight_decay)
-  return var
-
-"""
 
 
 def _variable_with_weight_decay(name, shape, stddev, wd):
@@ -214,18 +207,18 @@ def rgb_to_gray(tensor):
     return tf.reshape(tf.add(tf.multiply(0.2126, R), tf.add(tf.multiply(0.7152, G), tf.multiply(0.0722, B))), [FLAGS.batch_size, IMAGE_SIZE,IMAGE_SIZE,1])
 
 
-def linearmodel(images,use_Suquan,norm_Suquan,wdf,wdW,Classe):
+def linearmodel(images):
   """Build the CIFAR-10 model.
   Args:
     images: Images returned from distorted_inputs() or inputs().
   Returns:
     Logits.
   """
-  if use_Suquan :
+  if FLAGS.use_Suquan :
 
     #f=tf.Variable(initial_value=tf.truncated_normal(mean=0.0,stddev=norm_Suquan,dtype=tf.float32,shape=[576]),trainable=True)
-    f = tf.Variable(initial_value=tf.range(-norm_Suquan/2, norm_Suquan/2, norm_Suquan / 576, dtype=tf.float32), trainable=False)
-    tf.add_to_collection('losses',tf.multiply(tf.nn.l2_loss(f), wdf, name='weight_loss'))
+    f = tf.Variable(initial_value=tf.range(-FLAGS.norm_Suquan/2, FLAGS.norm_Suquan/2, FLAGS.norm_Suquan / 576, dtype=tf.float32), trainable=False)
+    tf.add_to_collection('losses',tf.multiply(tf.nn.l2_loss(f), FLAGS.wdf, name='weight_loss'))
 
     imagesgris = suquanlayer(rgb_to_gray(images), f,[FLAGS.batch_size,IMAGE_SIZE,IMAGE_SIZE,1])
   else:
@@ -233,19 +226,19 @@ def linearmodel(images,use_Suquan,norm_Suquan,wdf,wdW,Classe):
 
 
   with tf.variable_scope('softmax_linear') as scope:
-    weights = _variable_with_weight_decay('weights', [576, len(Classe)],
+    weights = _variable_with_weight_decay('weights', [576, len(FLAGS.Classe)],
                                           stddev=0/576.0, wd=0)
-    biases = _variable_on_cpu('biases', [len(Classe)],
+    biases = _variable_on_cpu('biases', [len(FLAGS.Classe)],
                               tf.constant_initializer(0.0))
     softmax_linear = tf.add(tf.matmul(tf.reshape(imagesgris,[FLAGS.batch_size,-1]), weights), biases, name=scope.name)
     _activation_summary(softmax_linear)
-    tf.add_to_collection('losses',tf.multiply(tf.nn.l2_loss(weights), wdW, name='weight_loss'))
+    tf.add_to_collection('losses',tf.multiply(tf.nn.l2_loss(weights), FLAGS.wdW, name='weight_loss'))
   return softmax_linear
 
 
 
 
-def inference(images,reglog,use_Suquan,norm_Suquan,wdf,wdW,Classe):
+def inference(images):
   """Build the CIFAR-10 model.
   Args:
     images: Images returned from distorted_inputs() or inputs().
@@ -257,14 +250,14 @@ def inference(images,reglog,use_Suquan,norm_Suquan,wdf,wdW,Classe):
   # If we only ran this model on a single GPU, we could simplify this function
   # by replacing all instances of tf.get_variable() with tf.Variable().
 
-  if reglog :
-      return linearmodel(images,use_Suquan,norm_Suquan,wdf,wdW,Classe)
+  if FLAGS.use_linearmodel :
+      return linearmodel(images)
   else:
-    if use_Suquan:
+    if FLAGS.use_Suquan:
         f = tf.Variable(
-              initial_value=tf.range(-norm_Suquan / 2, norm_Suquan / 2, norm_Suquan / (IMAGE_SIZE*IMAGE_SIZE), dtype=tf.float32),
+              initial_value=tf.range(-FLAGS.norm_Suquan / 2, FLAGS.norm_Suquan / 2, FLAGS.norm_Suquan / (IMAGE_SIZE*IMAGE_SIZE), dtype=tf.float32),
               trainable=True)
-        tf.add_to_collection('losses',tf.multiply(tf.nn.l2_loss(f), wdf, name='weight_loss'))
+        tf.add_to_collection('losses',tf.multiply(tf.nn.l2_loss(f), FLAGS.wdf, name='weight_loss'))
         shape=[FLAGS.batch_size,IMAGE_SIZE,IMAGE_SIZE,1]
         imagesgris = suquanlayer(rgb_to_gray(images), f,shape)
     else:
@@ -331,13 +324,13 @@ def inference(images,reglog,use_Suquan,norm_Suquan,wdf,wdW,Classe):
     # tf.nn.sparse_softmax_cross_entropy_with_logits accepts the unscaled logits
     # and performs the softmax internally for efficiency.
     with tf.variable_scope('softmax_linear') as scope:
-        weights = _variable_with_weight_decay('weights', [192, len(Classe)],
+        weights = _variable_with_weight_decay('weights', [192, len(FLAGS.Classe)],
                                           stddev=1/192.0, wd=0.0)
-        biases = _variable_on_cpu('biases', [len(Classe)],
+        biases = _variable_on_cpu('biases', [len(FLAGS.Classe)],
                               tf.constant_initializer(0.0))
         softmax_linear = tf.add(tf.matmul(local4, weights), biases, name=scope.name)
         _activation_summary(softmax_linear)
-        tf.add_to_collection('losses',tf.multiply(tf.nn.l2_loss(weights), wdW, name='weight_loss'))
+        tf.add_to_collection('losses',tf.multiply(tf.nn.l2_loss(weights), FLAGS.wdW, name='weight_loss'))
     return softmax_linear
 
 
