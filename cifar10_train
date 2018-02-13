@@ -36,24 +36,6 @@ parser.add_argument('--log_device_placement', type=bool, default=False,
 parser.add_argument('--log_frequency', type=int, default=100,
                     help='How often to log results to the console.')
 
-parser.add_argument('--use_Suquan', type=bool, default=True,
-                    help='Train the model using the first layer with suquan.')
-
-parser.add_argument('--norm_Suquan', type=float, default=10,
-                    help='to multiply the inital value of f')
-
-parser.add_argument('--reglog', type=bool, default=False,
-                    help='if True then it is a logistic regression else neural network')
-
-parser.add_argument('--wdf', type=float, default=5/576,
-                    help='add L2L weight decay for "f" multiplied by wdf')
-
-parser.add_argument('--wdW', type=float, default=5/5760,
-                    help='add L2L weight decay for "W" multiplied by wdW')
-
-parser.add_argument('--Classe', type=list, default=[8,9],
-                    help='Classe used during the training')
-
 parser.add_argument('--use_distorted_inputs', type=bool,default=False)
 
 
@@ -91,7 +73,7 @@ def train():
 
     # Build a Graph that computes the logits predictions from the
     # inference model.
-    logits= cifar10.inference(images,FLAGS.reglog,FLAGS.use_Suquan,FLAGS.norm_Suquan,FLAGS.wdf,FLAGS.wdW,FLAGS.Classe)
+    logits= cifar10.inference(images)
     if len(FLAGS.Classe)==10 :
         logitsbis, labelsbis=logits,labels
     else :
