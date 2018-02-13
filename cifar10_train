@@ -39,10 +39,10 @@ parser.add_argument('--log_frequency', type=int, default=100,
 parser.add_argument('--use_Suquan', type=bool, default=True,
                     help='Train the model using the first layer with suquan.')
 
-parser.add_argument('--norm_Suquan', type=float, default=20,
+parser.add_argument('--norm_Suquan', type=float, default=10,
                     help='to multiply the inital value of f')
 
-parser.add_argument('--reglog', type=bool, default=True,
+parser.add_argument('--reglog', type=bool, default=False,
                     help='if True then it is a logistic regression else neural network')
 
 parser.add_argument('--wdf', type=float, default=5/576,
@@ -54,6 +54,15 @@ parser.add_argument('--wdW', type=float, default=5/5760,
 parser.add_argument('--Classe', type=list, default=[8,9],
                     help='Classe used during the training')
 
+parser.add_argument('--use_distorted_inputs', type=bool,default=False)
+
+
+def change_labels(labels,classe):
+    new_classe=[10,10,10,10,10,10,10,10,10,10]
+    for i in range(len(classe)):
+        new_classe[classe[i]]=i
+    new_classe=tf.constant(new_classe)
+    return tf.stack([new_classe[label] for label in tf.unstack(labels)])
 
 def locate_labels(L,labels):
     if len(L)==1:
@@ -62,11 +71,10 @@ def locate_labels(L,labels):
         return tf.logical_or(locate_labels(L[1:],labels),tf.equal(labels,L[0]))
 
 #delete logit and label if the label is not in L
-def use_classe(L,logits,labels):
-    a=tf.reshape(tf.where(locate_labels(L,labels)),[-1])
-    return tf.gather(logits,a) , tf.gather(labels,a)
-
-
+def use_classe(classe,logits,labels):
+    new_labels=change_labels(labels,classe)
+    a=tf.reshape(tf.where(locate_labels(classe,labels)),[-1])
+    return tf.gather(logits,a) ,tf.gather(new_labels,a)
 
 def train():
   """Train CIFAR-10 for a number of steps."""
@@ -76,11 +84,14 @@ def train():
     # Force input pipeline to CPU:0 to avoid operations sometimes ending up on
     # GPU and resulting in a slow down.
     with tf.device('/cpu:0'):
-      images, labels = cifar10.distorted_inputs()
+        if FLAGS.use_distorted_inputs:
+            images, labels = cifar10.distorted_inputs()
+        else:
+            images, labels = cifar10.inputs(False)
 
     # Build a Graph that computes the logits predictions from the
     # inference model.
-    logits= cifar10.inference(images,FLAGS.reglog,FLAGS.use_Suquan,FLAGS.norm_Suquan,FLAGS.wdf,FLAGS.wdW)
+    logits= cifar10.inference(images,FLAGS.reglog,FLAGS.use_Suquan,FLAGS.norm_Suquan,FLAGS.wdf,FLAGS.wdW,FLAGS.Classe)
     if len(FLAGS.Classe)==10 :
         logitsbis, labelsbis=logits,labels
     else :
@@ -97,6 +108,7 @@ def train():
 
       def begin(self):
         self._step = -1
+
         self._start_time = time.time()
 
       def before_run(self, run_context):
