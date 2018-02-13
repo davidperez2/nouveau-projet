@@ -202,42 +202,42 @@ def inputs(eval_data):
 
   return images, labels
 
+def suquanlayer(T,f,shape):
+    dim=1
+    for x in shape[1:]:
+        dim=dim*x
+    images = tf.nn.top_k(tf.reshape(T, [shape[0], -1]),dim).indices
+    return tf.reshape(tf.stack([tf.reshape(tf.gather(f, x, name=None), shape[1:], None) for x in tf.unstack(images)]),shape)
 
-def suquanlayer(T,f):
-    R, G, B = tf.unstack(T, None, 3)
-    images = tf.nn.top_k(
-        tf.reshape(tf.add(tf.multiply(0.2126, R), tf.add(tf.multiply(0.7152, G), tf.multiply(0.0722, B))), [FLAGS.batch_size, -1]),
-        IMAGE_SIZE*IMAGE_SIZE).indices
-    return tf.reshape(tf.stack(
-        [tf.reshape(tf.gather(f, x, name=None), [IMAGE_SIZE, IMAGE_SIZE], None) for x in tf.unstack(images)]),
-               [FLAGS.batch_size, IMAGE_SIZE, IMAGE_SIZE, 1])
+def rgb_to_gray(tensor):
+    R,G,B=tf.unstack(tensor,axis=3)
+    return tf.reshape(tf.add(tf.multiply(0.2126, R), tf.add(tf.multiply(0.7152, G), tf.multiply(0.0722, B))), [FLAGS.batch_size, IMAGE_SIZE,IMAGE_SIZE,1])
 
 
-
-def inferencebis(images,use_Suquan,norm_Suquan,wdf,wdW):
+def linearmodel(images,use_Suquan,norm_Suquan,wdf,wdW,Classe):
   """Build the CIFAR-10 model.
   Args:
     images: Images returned from distorted_inputs() or inputs().
   Returns:
     Logits.
   """
-
   if use_Suquan :
+
     #f=tf.Variable(initial_value=tf.truncated_normal(mean=0.0,stddev=norm_Suquan,dtype=tf.float32,shape=[576]),trainable=True)
     f = tf.Variable(initial_value=tf.range(-norm_Suquan/2, norm_Suquan/2, norm_Suquan / 576, dtype=tf.float32), trainable=False)
     tf.add_to_collection('losses',tf.multiply(tf.nn.l2_loss(f), wdf, name='weight_loss'))
-    imagesgris = suquanlayer(images, f)
+
+    imagesgris = suquanlayer(rgb_to_gray(images), f,[FLAGS.batch_size,IMAGE_SIZE,IMAGE_SIZE,1])
   else:
-    R, G, B = tf.unstack(images, None, 3)
-    imagesgris=tf.reshape(tf.add(tf.multiply(0.2126, R), tf.add(tf.multiply(0.7152, G), tf.multiply(0.0722, B))),[FLAGS.batch_size,IMAGE_SIZE,IMAGE_SIZE,1])
+    imagesgris=rgb_to_gray(images)
 
 
   with tf.variable_scope('softmax_linear') as scope:
-    weights = _variable_with_weight_decay('weights', [576, NUM_CLASSES],
+    weights = _variable_with_weight_decay('weights', [576, len(Classe)],
                                           stddev=0/576.0, wd=0)
-    biases = _variable_on_cpu('biases', [NUM_CLASSES],
+    biases = _variable_on_cpu('biases', [len(Classe)],
                               tf.constant_initializer(0.0))
-    softmax_linear = tf.add(tf.matmul(tf.reshape(imagesgris,[128,-1]), weights), biases, name=scope.name)
+    softmax_linear = tf.add(tf.matmul(tf.reshape(imagesgris,[FLAGS.batch_size,-1]), weights), biases, name=scope.name)
     _activation_summary(softmax_linear)
     tf.add_to_collection('losses',tf.multiply(tf.nn.l2_loss(weights), wdW, name='weight_loss'))
   return softmax_linear
@@ -245,7 +245,7 @@ def inferencebis(images,use_Suquan,norm_Suquan,wdf,wdW):
 
 
 
-def inference(images,reglog,use_Suquan,norm_Suquan,wdf,wdW):
+def inference(images,reglog,use_Suquan,norm_Suquan,wdf,wdW,Classe):
   """Build the CIFAR-10 model.
   Args:
     images: Images returned from distorted_inputs() or inputs().
@@ -258,19 +258,17 @@ def inference(images,reglog,use_Suquan,norm_Suquan,wdf,wdW):
   # by replacing all instances of tf.get_variable() with tf.Variable().
 
   if reglog :
-      return inferencebis(images,use_Suquan,norm_Suquan,wdf,wdW)
+      return linearmodel(images,use_Suquan,norm_Suquan,wdf,wdW,Classe)
   else:
     if use_Suquan:
         f = tf.Variable(
-              initial_value=tf.range(-norm_Suquan / 2, norm_Suquan / 2, norm_Suquan / 576, dtype=tf.float32),
+              initial_value=tf.range(-norm_Suquan / 2, norm_Suquan / 2, norm_Suquan / (IMAGE_SIZE*IMAGE_SIZE), dtype=tf.float32),
               trainable=True)
         tf.add_to_collection('losses',tf.multiply(tf.nn.l2_loss(f), wdf, name='weight_loss'))
-        imagesgris = suquanlayer(images, f)
+        shape=[FLAGS.batch_size,IMAGE_SIZE,IMAGE_SIZE,1]
+        imagesgris = suquanlayer(rgb_to_gray(images), f,shape)
     else:
-        R, G, B = tf.unstack(images, None, 3)
-        imagesgris = tf.reshape(
-              tf.add(tf.multiply(0.2126, R), tf.add(tf.multiply(0.7152, G), tf.multiply(0.0722, B))),
-              [FLAGS.batch_size, IMAGE_SIZE, IMAGE_SIZE, 1])
+        imagesgris=rgb_to_gray(images)
 
     with tf.variable_scope('conv1') as scope:
         kernel = _variable_with_weight_decay('weights',
@@ -333,9 +331,9 @@ def inference(images,reglog,use_Suquan,norm_Suquan,wdf,wdW):
     # tf.nn.sparse_softmax_cross_entropy_with_logits accepts the unscaled logits
     # and performs the softmax internally for efficiency.
     with tf.variable_scope('softmax_linear') as scope:
-        weights = _variable_with_weight_decay('weights', [192, NUM_CLASSES],
+        weights = _variable_with_weight_decay('weights', [192, len(Classe)],
                                           stddev=1/192.0, wd=0.0)
-        biases = _variable_on_cpu('biases', [NUM_CLASSES],
+        biases = _variable_on_cpu('biases', [len(Classe)],
                               tf.constant_initializer(0.0))
         softmax_linear = tf.add(tf.matmul(local4, weights), biases, name=scope.name)
         _activation_summary(softmax_linear)
